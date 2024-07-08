@@ -25,23 +25,38 @@
 
 pragma solidity ^0.8.18;
 
-import {OracleLib, AggregatorV3Interface} from "./libraries/OracleLib.sol";
+import {OracleLib, AggregatorV2V3Interface} from "./libraries/OracleLib.sol";
 import {DecentralizedStableCoin} from "./DecentralizedStableCoin.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 /*
  * @title DSCEngine
  * @author Moika Dugovicova
  */
 
-contract DSCEngine {
+contract DSCEngine is ReentrancyGuard {
     ///////////////////
     // Errors
     ///////////////////
     error DSCEngine__TokenAddressesAndPriceFeedAddressesAmountsDontMatch();
+    error DSCEngine__NeedsMoreThanZero();
+    error DSCEngine__TokenNotAllowed(address token);
     error DSCEngine__TransferFailed();
+    error DSCEngine__BreaksHealthFactor(uint256 healthFactorValue);
+    error DSCEngine__MintFailed();
+    error DSCEngine__HealthFactorOk();
+    error DSCEngine__HealthFactorNotImproved();
+
+    ///////////////////
+    // Types
+    ///////////////////
+    using OracleLib for AggregatorV2V3Interface;
 
     ///////////////////
     // State Variables
     ///////////////////
+
     DecentralizedStableCoin private immutable i_dsc;
 
     uint256 private constant LIQUIDATION_THRESHOLD = 50; // This means you need to be 200% over-collateralized
@@ -161,7 +176,7 @@ contract DSCEngine {
     }
 
     function _getUsdValue(address token, uint256 amount) private view returns (uint256) {
-        AggregatorV3Interface priceFeed = AggregatorV3Interface(s_priceFeeds[token]);
+        AggregatorV2V3Interface priceFeed = AggregatorV2V3Interface(s_priceFeeds[token]);
         (, int256 price,,,) = priceFeed.staleCheckLatestRoundData();
         // 1 ETH = 1000 USD
         // The returned value from Chainlink will be 1000 * 1e8
@@ -169,10 +184,8 @@ contract DSCEngine {
         // We want to have everything in terms of WEI, so we add 10 zeros at the end
         return ((uint256(price) * ADDITIONAL_FEED_PRECISION) * amount) / PRECISION;
     }
-    function _calculateHealthFactor(
-        uint256 totalDscMinted,
-        uint256 collateralValueInUsd
-    )
+
+    function _calculateHealthFactor(uint256 totalDscMinted, uint256 collateralValueInUsd)
         internal
         pure
         returns (uint256)
@@ -182,13 +195,6 @@ contract DSCEngine {
         return (collateralAdjustedForThreshold * PRECISION) / totalDscMinted;
     }
 
-    function revertIfHealthFactorIsBroken(address user) internal view {
-        uint256 userHealthFactor = _healthFactor(user);
-        if (userHealthFactor < MIN_HEALTH_FACTOR) {
-            revert DSCEngine__BreaksHealthFactor(userHealthFactor);
-        }
-    }
-    
     ///////////////////////////////////////////////
     // External & Public View & Pure Functions   //
     ///////////////////////////////////////////////
