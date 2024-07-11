@@ -4,7 +4,7 @@
 2. Stability mechanism (Minting): Algorithmic (Decentralized) 
     1. People can only mint the stablecoin with enough collateral (coded into our protocol)
 3. Collateral type: Exogenous (Crypto)
-    1. wETH (w means wrapped and its ERC20 version ETH)
+    1. wETH (w means wrapped and its ERC20 version of ETH)
     2. wBTC
 
 
